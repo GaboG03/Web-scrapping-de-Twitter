@@ -3,7 +3,7 @@ title: "Taller02 II"
 output:
   html_document: default
   pdf_document: default
-autor: Erika Galindes, Gabriel Granda.
+autor: Gabriel Granda.
 ---
 
 Vamos a realizar webscrapping en Google News acerca de las noticias que tienen que ver con los bancos y préstamos en el Ecuador: 
