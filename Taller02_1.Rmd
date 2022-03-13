@@ -1,0 +1,117 @@
+---
+title: "Taller02 II"
+output:
+  html_document: default
+  pdf_document: default
+autor: Erika Galindes, Gabriel Granda.
+---
+
+Vamos a realizar webscrapping en Google News acerca de las noticias que tienen que ver con los bancos y préstamos en el Ecuador: 
+
+```{r,echo=FALSE}
+library(rvest)
+library(tidyverse)
+```
+
+```{r}
+busqueda<- "Prestamos, Ecuador"
+news_pag<- "https://news.google.com/"
+html_dir<- paste0(news_pag,"search?q=",gsub(" ","+",busqueda),"&hl=es-419&gl=US&ceid=US:es-419")
+google_news<- read_html(html_dir)
+noticias<-  html_nodes(google_news,".ipQwMb")
+
+not<- html_text(noticias[2:6])
+not
+
+```
+Para establecer la dirección de la página web identificamos un patrón. 
+
+Con read_html() leemos la página web Google News, luego, extraemos la información de DIV, para nuestro caso en particular, extraemos las noticias relacionadas a préstamos en el Ecuador. 
+
+Finalmente, con html_text() extraemos el texto del nodo noticias, es decir, extraemos los titulares de las noticias que tienen que ver con Préstamos en el Ecuador. 
+
+También vamos a extraer el nombre del periódico de donde proviene la noticia y almacenaremos ambos elementos en un data frame. 
+
+Primero, la clase para poder extraer el nombre es .wEwyrc
+
+```{r}
+periodico <-  html_nodes(google_news,".wEwyrc") 
+periodico <-  html_text(periodico)
+periodico <- periodico[2:6]
+
+Noticia <- data.frame(Fuente =periodico, Titular = not )
+Noticia
+
+```
+
+Ahora, vamos a extraer la misma información a través de Twitter. 
+
+Para ello, primero se solicita un perfil de desarrollador, se crea la app y finalmente creamos el token: 
+
+```{r,echo=FALSE}
+library(rtweet)
+appname<- "Extracción Minería de Datos"
+key<- "tI08jy5RZMr9cQFwkM3BzAcwH"
+secret<- "u3Drddn5eM0joFlOE3SaJHKQe197MZwRgzqBwzJQqwUseiyGHd"
+twitter_token <- create_token(app = appname, consumer_key = key, consumer_secret = secret)
+
+```
+Así, podemos realizar el webscrapping: 
+
+
+```{r}
+busqueda <- search_tweets("Finanzas,Ecuador", n = 7, include_rts = F, lang="es", token = twitter_token, place_country="EC")
+busqueda <- busqueda %>% dplyr::select(screen_name, created_at, status_id, text)
+head(busqueda)
+```
+
+Realizamos la limpieza y tokenización con el código proporcionado en RPubs: 
+
+```{r}
+
+limpiar_tokenizar <- function(texto){
+  # El orden de la limpieza no es arbitrario
+  # Se convierte todo el texto a minúsculas
+  nuevo_texto <- tolower(texto)
+  nuevo_texto <- str_replace_all(nuevo_texto,"RT @[a-z,A-Z]*: ","")
+  # Get rid of hashtags
+  nuevo_texto <- str_replace_all(nuevo_texto,"#[a-z,A-Z]*","")
+  # Get rid of references to other screennames
+  nuevo_texto <- str_replace_all(nuevo_texto,"@[a-z,A-Z]*","")  
+  
+  # Eliminación de páginas web (palabras que empiezan por "http." seguidas 
+  # de cualquier cosa que no sea un espacio)
+  nuevo_texto <- str_replace_all(nuevo_texto,"http\\S*", "")
+  # Eliminación de signos de puntuación
+  nuevo_texto <- str_replace_all(nuevo_texto,"[[:punct:]]", " ")
+  # Eliminación de nÃºmeros
+  nuevo_texto <- str_replace_all(nuevo_texto,"[[:digit:]]", " ")
+  # Eliminación de espacios en blanco múltiples
+  nuevo_texto <- str_replace_all(nuevo_texto,"[\\s]+", " ")
+  # Tokenización por palabras individuales
+  nuevo_texto <- str_split(nuevo_texto, " ")[[1]]
+  # Eliminación de tokens con una longitud < 2
+  nuevo_texto <- keep(.x = nuevo_texto, .p = function(x){str_length(x) > 1})
+  return(nuevo_texto)
+}
+# Se aplica la función de limpieza y tokenización a cada tweet
+busqueda  <- busqueda  %>% mutate(texto_tokenizado = map(.x = text,
+                                                   .f = limpiar_tokenizar))
+# Analisis Exploratorio
+tweets_tidy <- busqueda  %>% dplyr::select(-text)%>% unnest()
+
+```
+
+Finalmente, construímos una nube con las palabras de mayor frecuencia: 
+
+```{r}
+library(wordcloud)
+tweets_tidy <- tweets_tidy %>% rename(token = texto_tokenizado)
+df <- tweets_tidy %>% group_by(token) %>% summarise(frecuencia=n())
+total <- sum(df$frecuencia)
+df <- df%>% 
+  mutate(frecuencia=frecuencia/total)
+wordcloud(words = df$token, freq = df$frecuencia,
+            max.words = 400, random.order = FALSE, rot.per = 0.35,
+            colors = brewer.pal(8, "Dark2"))
+```
